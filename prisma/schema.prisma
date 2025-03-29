@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  description String?
+  questions   Question[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Question {
+  id             Int        @id @default(autoincrement())
+  text           String
+  categoryId     Int
+  category       Category   @relation(fields: [categoryId], references: [id])
+  difficulty     String     // EASY, MEDIUM, HARD
+  correctAnswer  String
+  options        String[]
+  explanation    String?
+  source         String?  // TTA para The Trivia API, OTD para Open Trivia DB
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model QuizSession {
+  id              Int      @id @default(autoincrement())
+  score           Int      @default(0)
+  totalQuestions  Int
+  completed       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+} 
