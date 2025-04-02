@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
+import questionsRouter from './routes/questions.js';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -13,8 +14,12 @@ const DIFFICULTY_MAP: Record<string, string> = {
   'hard': 'Difícil'
 };
 
+// Middlewares
 app.use(cors());
 app.use(express.json());
+
+// Rotas
+app.use('/questions', questionsRouter);
 
 // Rota para buscar questões com filtros
 app.get('/api/questions', async (req, res) => {
