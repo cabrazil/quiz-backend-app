@@ -1,52 +1,45 @@
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
 import questionsRouter from './routes/questions.js';
 import categoriesRouter from './routes/categories.js';
+import quizRouter from './routes/quiz.js';
 
 const app = express();
-const prisma = new PrismaClient();
+const port = process.env.PORT || 3000;
 
-// Configuração do CORS
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'], // URLs permitidas
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
-
-app.use(express.json());
-
-// Log de todas as requisições
+// Middleware para logging
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
   next();
 });
 
-// Middleware para log de erros
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Erro na requisição:', err);
-  res.status(500).json({ error: 'Erro interno do servidor' });
+app.use(cors());
+app.use(express.json());
+
+// Rota de teste simples
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'API está funcionando!' });
 });
 
 // Rotas
-app.use('/questions', questionsRouter);
-app.use('/categories', categoriesRouter);
+console.log('Registrando rotas...');
+app.use('/api/questions', questionsRouter);
+app.use('/api/categories', categoriesRouter);
+app.use('/api/quiz', quizRouter);
+console.log('Rotas registradas com sucesso!');
 
-// Rota de teste
-app.get('/test', (req, res) => {
-  res.json({ message: 'API está funcionando!' });
+// Middleware de erro
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Erro na aplicação:', err);
+  res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`[${new Date().toISOString()}] Servidor rodando na porta ${PORT}`);
+app.listen(port, () => {
+  console.log(`[${new Date().toISOString()}] Servidor rodando na porta ${port}`);
   console.log('Rotas disponíveis:');
-  console.log('- /questions');
-  console.log('- /questions/:id');
-  console.log('- /categories');
-  console.log('- /test');
+  console.log('- GET /');
+  console.log('- GET /api/categories');
+  console.log('- POST /api/questions/selected');
+  console.log('- GET /api/questions/selected');
+  console.log('- DELETE /api/questions/selected');
 }); 

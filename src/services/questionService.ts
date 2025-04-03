@@ -2,6 +2,13 @@ import { Question, Difficulty } from '../types/question';
 import { QUIZ_CONSTANTS } from '../constants/quiz';
 import axios from 'axios';
 
+// Pontuação por nível de dificuldade
+const DIFFICULTY_POINTS = {
+  'FÁCIL': 1,
+  'MÉDIO': 2,
+  'DIFÍCIL': 3
+} as const;
+
 export class QuestionService {
   private static instance: QuestionService;
   private questions: Question[] = [];
@@ -22,14 +29,14 @@ export class QuestionService {
         params: {
           category,
           difficulty,
-          limit: QUIZ_CONSTANTS.TOTAL_QUESTIONS
+          limit: QUIZ_CONSTANTS.DEFAULT_QUESTIONS
         }
       });
 
       return response.data.map((question: any) => ({
         id: question.id,
         text: question.text,
-        category: question.category,
+        categoryId: question.categoryId,
         difficulty: question.difficulty,
         correctAnswer: question.correctAnswer,
         options: question.options,
@@ -44,7 +51,7 @@ export class QuestionService {
     }
   }
 
-  public getRandomQuestions(questions: Question[], count: number = QUIZ_CONSTANTS.TOTAL_QUESTIONS): Question[] {
+  public getRandomQuestions(questions: Question[], count: number = QUIZ_CONSTANTS.DEFAULT_QUESTIONS): Question[] {
     const shuffled = [...questions].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, count);
   }
@@ -52,7 +59,7 @@ export class QuestionService {
   public calculateScore(questions: Question[], answers: string[]): number {
     return answers.reduce((score, answer, index) => {
       const question = questions[index];
-      const points = QUIZ_CONSTANTS.DIFFICULTY_POINTS[question.difficulty];
+      const points = DIFFICULTY_POINTS[question.difficulty as keyof typeof DIFFICULTY_POINTS];
       return answer === question.correctAnswer ? score + points : score;
     }, 0);
   }
@@ -62,8 +69,8 @@ export class QuestionService {
       {
         id: 1,
         text: "Qual é a capital do Brasil?",
-        category: "Geografia",
-        difficulty: "EASY",
+        categoryId: 22, // ID da categoria Geografia
+        difficulty: "FÁCIL",
         correctAnswer: "Brasília",
         options: ["São Paulo", "Rio de Janeiro", "Brasília", "Salvador"],
         explanation: "Brasília é a capital do Brasil desde 1960...",
@@ -73,8 +80,8 @@ export class QuestionService {
       {
         id: 2,
         text: "Qual é o maior planeta do Sistema Solar?",
-        category: "Ciências",
-        difficulty: "MEDIUM",
+        categoryId: 17, // ID da categoria Ciência e Natureza
+        difficulty: "MÉDIO",
         correctAnswer: "Júpiter",
         options: ["Saturno", "Júpiter", "Marte", "Terra"],
         explanation: "Júpiter é o maior planeta do Sistema Solar...",
@@ -84,8 +91,8 @@ export class QuestionService {
       {
         id: 3,
         text: "Quem pintou a Mona Lisa?",
-        category: "Arte",
-        difficulty: "HARD",
+        categoryId: 25, // ID da categoria Arte
+        difficulty: "DIFÍCIL",
         correctAnswer: "Leonardo da Vinci",
         options: ["Vincent van Gogh", "Pablo Picasso", "Leonardo da Vinci", "Michelangelo"],
         explanation: "A Mona Lisa foi pintada por Leonardo da Vinci...",

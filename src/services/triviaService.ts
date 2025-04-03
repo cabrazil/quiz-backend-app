@@ -112,7 +112,7 @@ export async function fetchQuestions(
     return data.results.map((q): Question => ({
       id: 0, // Será preenchido pelo banco de dados
       text: q.question,
-      category: translateCategory(q.category),
+      categoryId: CATEGORY_IDS[q.category] || 9, // Usa o ID mapeado ou 9 (Conhecimentos Gerais) como fallback
       difficulty: translateDifficulty(q.difficulty),
       correctAnswer: q.correct_answer,
       options: [
@@ -120,6 +120,8 @@ export async function fetchQuestions(
         ...q.incorrect_answers
       ].sort(() => Math.random() - 0.5), // Embaralha as opções
       explanation: null,
+      source: 'OTD',
+      scrImage: null,
       createdAt: new Date(),
       updatedAt: new Date()
     }))

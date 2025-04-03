@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { decode } from 'html-entities'
+import { Question } from '../types/question'
 
 const prisma = new PrismaClient()
 
@@ -279,7 +280,7 @@ export async function translateQuestions() {
         console.log(`\nTraduzindo pergunta ID: ${question.id}`)
         
         // Decodificar campos em base64
-        const decodedCategory = decodeBase64(question.category)
+        const decodedCategory = decodeBase64(question.categoryId.toString())
         const decodedDifficulty = decodeBase64(question.difficulty)
         const decodedText = decodeBase64(question.text)
         const decodedOptions = question.options.map(opt => decodeBase64(opt))
@@ -305,7 +306,11 @@ export async function translateQuestions() {
           where: { id: question.id },
           data: {
             text: translatedText,
-            category: translatedCategory,
+            category: {
+              connect: {
+                id: parseInt(translatedCategory)
+              }
+            },
             difficulty: translatedDifficulty,
             options: translatedOptions,
             correctAnswer: translatedCorrectAnswer

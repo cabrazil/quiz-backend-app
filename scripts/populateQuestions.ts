@@ -13,7 +13,7 @@ async function main() {
       {
         text: 'Qual foi o primeiro presidente do Brasil?',
         categoryId: categoryMap.get('história'),
-        difficulty: 'EASY',
+        difficulty: 'FÁCIL',
         correctAnswer: 'Marechal Deodoro da Fonseca',
         options: [
           'Marechal Deodoro da Fonseca',
@@ -26,7 +26,7 @@ async function main() {
       {
         text: 'Qual é a capital do Brasil?',
         categoryId: categoryMap.get('geografia'),
-        difficulty: 'EASY',
+        difficulty: 'FÁCIL',
         correctAnswer: 'Brasília',
         options: [
           'São Paulo',
@@ -39,7 +39,7 @@ async function main() {
       {
         text: 'Qual é o maior planeta do Sistema Solar?',
         categoryId: categoryMap.get('ciências'),
-        difficulty: 'EASY',
+        difficulty: 'FÁCIL',
         correctAnswer: 'Júpiter',
         options: [
           'Marte',
@@ -52,7 +52,7 @@ async function main() {
       {
         text: 'Quem venceu a Copa do Mundo de 2002?',
         categoryId: categoryMap.get('esportes'),
-        difficulty: 'EASY',
+        difficulty: 'FÁCIL',
         correctAnswer: 'Brasil',
         options: [
           'Alemanha',
@@ -65,7 +65,7 @@ async function main() {
       {
         text: 'Qual é o nome do protagonista da série Breaking Bad?',
         categoryId: categoryMap.get('entretenimento'),
-        difficulty: 'EASY',
+        difficulty: 'FÁCIL',
         correctAnswer: 'Walter White',
         options: [
           'Walter White',

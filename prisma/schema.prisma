@@ -17,27 +17,58 @@ model Category {
 }
 
 model Question {
-  id             Int        @id @default(autoincrement())
+  id             Int              @id @default(autoincrement())
   text           String
   categoryId     Int
-  category       Category   @relation(fields: [categoryId], references: [id])
-  difficulty     String     // EASY, MEDIUM, HARD
+  category       Category         @relation(fields: [categoryId], references: [id])
+  difficulty     String          // EASY, MEDIUM, HARD
   correctAnswer  String
   options        String[]
   explanation    String?
-  source         String?  // TTA para The Trivia API, OTD para Open Trivia DB
-  scrImage       String?   // Caminho da imagem da questão
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  source         String?         // TTA para The Trivia API, OTD para Open Trivia DB
+  scrImage       String?         // Caminho da imagem da questão
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  history        QuestionHistory[]
+  quizQuestions  QuizQuestion[]
+}
+
+model QuestionHistory {
+  id            Int           @id @default(autoincrement())
+  questionId    Int
+  question      Question      @relation(fields: [questionId], references: [id])
+  quizSessionId Int?
+  quizSession   QuizSession?  @relation(fields: [quizSessionId], references: [id])
+  usedAt        DateTime      @default(now())
+  score         Int?         // Score obtido na questão
+  createdAt     DateTime      @default(now())
+
+  @@index([questionId])
+  @@index([usedAt])
+  @@index([quizSessionId])
 }
 
 model QuizSession {
-  id              Int      @id @default(autoincrement())
-  score           Int      @default(0)
+  id              Int              @id @default(autoincrement())
+  score           Int              @default(0)
   totalQuestions  Int
-  completed       Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  completed       Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  questionHistory QuestionHistory[]
+  questions       QuizQuestion[]
+}
+
+model QuizQuestion {
+  id            Int         @id @default(autoincrement())
+  quizSessionId Int
+  quizSession   QuizSession @relation(fields: [quizSessionId], references: [id])
+  questionId    Int
+  question      Question    @relation(fields: [questionId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@index([quizSessionId])
+  @@index([questionId])
 }
 
 model SelectedQuestions {
