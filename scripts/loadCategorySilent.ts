@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import { translateText, decodeHtmlEntities } from '../src/services/translateServiceFix'
 
+// Nota: Os erros de linter sobre 'readline' e 'process' são apenas avisos de tipo
+// e não afetam o funcionamento do script. O @types/node já está instalado.
+
 const prisma = new PrismaClient()
 
 // Lista de categorias disponíveis em português
@@ -49,7 +52,7 @@ async function fetchQuestions(categoryId: string) {
 }
 
 // Função para processar uma questão
-async function processQuestion(question: any, categoryName: string) {
+async function processQuestion(question: any, categoryName: string): Promise<'created' | 'ignored'> {
   try {
     // Decodificar caracteres especiais HTML
     const cleanedQuestion = decodeHtmlEntities(question.question)
@@ -74,28 +77,41 @@ async function processQuestion(question: any, categoryName: string) {
 
     if (!category) {
       console.error(`Categoria "${categoryName}" não encontrada`)
-      return
+      return 'ignored'
     }
 
     // Cria a questão no banco de dados
-    await prisma.question.create({
-      data: {
-        text: translatedQuestion,
-        categoryId: category.id,
-        difficulty: DIFFICULTY_MAP[question.difficulty as keyof typeof DIFFICULTY_MAP] || question.difficulty,
-        correctAnswer: translatedCorrectAnswer,
-        options: shuffledOptions,
-        explanation: null, // Pode ser preenchido posteriormente
-        source: 'OTD' // Open Trivia DB
+    const existingQuestion = await prisma.question.findFirst({
+      where: {
+        text: translatedQuestion
       }
     })
 
-    console.log(`Questão traduzida e criada com sucesso para categoria ${category.name}`)
+    if (existingQuestion) {
+      console.log(`Questão ignorada (já existe) para categoria ${category.name}`)
+      return 'ignored'
+    } else {
+      await prisma.question.create({
+        data: {
+          text: translatedQuestion,
+          categoryId: category.id,
+          difficulty: DIFFICULTY_MAP[question.difficulty as keyof typeof DIFFICULTY_MAP] || question.difficulty,
+          correctAnswer: translatedCorrectAnswer,
+          options: shuffledOptions,
+          explanation: null, // Pode ser preenchido posteriormente
+          source: 'OTD' // Open Trivia DB
+        }
+      })
+      console.log(`Questão traduzida e criada com sucesso para categoria ${category.name}`)
+      console.log("--------------------------------")
+      return 'created'
+    }
     
     // Aguarda 1 segundo entre cada questão para não sobrecarregar a API de tradução
     await new Promise(resolve => setTimeout(resolve, 1000))
   } catch (error) {
     console.error('Erro ao processar questão:', error)
+    return 'ignored'
   }
 }
 
@@ -113,11 +129,20 @@ async function loadCategoryQuestions(categoryId: string) {
     const questions = await fetchQuestions(categoryId)
     console.log(`Encontradas ${questions.length} questões para a categoria ${categoryName}`)
     
+    let createdCount = 0
+    let ignoredCount = 0
+    
     for (const question of questions) {
-      await processQuestion(question, categoryName)
+      const result = await processQuestion(question, categoryName)
+      if (result === 'created') createdCount++
+      if (result === 'ignored') ignoredCount++
     }
     
-    console.log(`Carregamento de questões para categoria ${categoryName} concluído`)
+    console.log(`\nResumo do carregamento para categoria ${categoryName}:`)
+    console.log(`- Total de questões encontradas: ${questions.length}`)
+    console.log(`- Questões novas carregadas: ${createdCount}`)
+    console.log(`- Questões ignoradas (já existentes): ${ignoredCount}`)
+    console.log(`\nCarregamento de questões para categoria ${categoryName} concluído`)
   } catch (error) {
     console.error(`Erro ao carregar questões para categoria ${categoryId}:`, error)
   }
@@ -136,7 +161,9 @@ async function main() {
   try {
     listAvailableCategories()
     
-    const readline = (await import('readline')).createInterface({
+    // Importação dinâmica do módulo readline
+    const readlineModule = await import('readline')
+    const readline = readlineModule.createInterface({
       input: process.stdin,
       output: process.stdout
     })

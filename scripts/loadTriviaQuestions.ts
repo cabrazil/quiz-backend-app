@@ -34,7 +34,7 @@ async function fetchQuestions(category: string) {
 }
 
 // Função para processar uma questão
-async function processQuestion(question: any, categoryName: string) {
+async function processQuestion(question: any, categoryName: string): Promise<'created' | 'ignored'> {
   try {
     // Decodificar caracteres especiais HTML
     const cleanedQuestion = decodeHtmlEntities(question.question.text)
@@ -59,28 +59,43 @@ async function processQuestion(question: any, categoryName: string) {
 
     if (!category) {
       console.error(`Categoria "${categoryName}" não encontrada`)
-      return
+      return 'ignored'
     }
 
-    // Cria a questão no banco de dados
-    await prisma.question.create({
-      data: {
-        text: translatedQuestion,
-        categoryId: category.id,
-        difficulty: DIFFICULTY_MAP[question.difficulty as keyof typeof DIFFICULTY_MAP] || question.difficulty,
-        correctAnswer: translatedCorrectAnswer,
-        options: shuffledOptions,
-        explanation: null, // Pode ser preenchido posteriormente
-        source: 'TTA' // The Trivia API
+    // Verifica se a questão já existe
+    const existingQuestion = await prisma.question.findFirst({
+      where: {
+        text: translatedQuestion
       }
     })
 
-    console.log(`Questão traduzida e criada com sucesso para categoria ${category.name}`)
+    if (existingQuestion) {
+      console.log(`Questão ignorada (já existe) para categoria ${category.name}`)
+      return 'ignored'
+    } else {
+      // Cria a questão no banco de dados
+      await prisma.question.create({
+        data: {
+          text: translatedQuestion,
+          categoryId: category.id,
+          difficulty: DIFFICULTY_MAP[question.difficulty as keyof typeof DIFFICULTY_MAP] || question.difficulty,
+          correctAnswer: translatedCorrectAnswer,
+          options: shuffledOptions,
+          explanation: null, // Pode ser preenchido posteriormente
+          source: 'TTA' // The Trivia API
+        }
+      })
+
+      console.log(`Questão traduzida e criada com sucesso para categoria ${category.name}`)
+      console.log("--------------------------------")
+      return 'created'
+    }
     
     // Aguarda 1 segundo entre cada questão para não sobrecarregar a API de tradução
     await new Promise(resolve => setTimeout(resolve, 1000))
   } catch (error) {
     console.error('Erro ao processar questão:', error)
+    return 'ignored'
   }
 }
 
@@ -91,19 +106,50 @@ async function loadCategoryQuestions(category: string) {
   const questions = await fetchQuestions(category)
   console.log(`Encontradas ${questions.length} questões na API`)
 
+  let createdCount = 0
+  let ignoredCount = 0
+
   for (const question of questions) {
-    await processQuestion(question, CATEGORY_MAP[category as keyof typeof CATEGORY_MAP])
+    const result = await processQuestion(question, CATEGORY_MAP[category as keyof typeof CATEGORY_MAP])
+    if (result === 'created') createdCount++
+    if (result === 'ignored') ignoredCount++
   }
+
+  console.log(`\nResumo do carregamento para categoria ${CATEGORY_MAP[category as keyof typeof CATEGORY_MAP]}:`)
+  console.log(`- Total de questões encontradas: ${questions.length}`)
+  console.log(`- Questões novas carregadas: ${createdCount}`)
+  console.log(`- Questões ignoradas (já existentes): ${ignoredCount}`)
 }
 
 // Função principal
 async function main() {
   try {
+    let totalCreated = 0
+    let totalIgnored = 0
+    let totalFound = 0
+
     // Carregar questões para cada categoria
     for (const category of Object.keys(CATEGORY_MAP)) {
-      await loadCategoryQuestions(category)
+      const questions = await fetchQuestions(category)
+      totalFound += questions.length
+
+      let createdCount = 0
+      let ignoredCount = 0
+
+      for (const question of questions) {
+        const result = await processQuestion(question, CATEGORY_MAP[category as keyof typeof CATEGORY_MAP])
+        if (result === 'created') createdCount++
+        if (result === 'ignored') ignoredCount++
+      }
+
+      totalCreated += createdCount
+      totalIgnored += ignoredCount
     }
 
+    console.log('\n=== Resumo Geral do Carregamento ===')
+    console.log(`- Total de questões encontradas: ${totalFound}`)
+    console.log(`- Total de questões novas carregadas: ${totalCreated}`)
+    console.log(`- Total de questões ignoradas (já existentes): ${totalIgnored}`)
     console.log('\nProcesso de carregamento concluído!')
   } catch (error) {
     console.error('Erro ao carregar questões:', error)
