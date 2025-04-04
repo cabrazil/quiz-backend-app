@@ -51,6 +51,19 @@ router.post('/start', async (req, res) => {
       }
     });
 
+    // Atualiza o QuestionHistory com o quizSessionId
+    await prisma.questionHistory.updateMany({
+      where: {
+        questionId: {
+          in: questions.map(q => q.id)
+        },
+        quizSessionId: null
+      },
+      data: {
+        quizSessionId: quizSession.id
+      }
+    });
+
     // Formata as questões para o frontend
     const formattedQuestions = quizSession.questions.map(q => ({
       id: q.question.id,

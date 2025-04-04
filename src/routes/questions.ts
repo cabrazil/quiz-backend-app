@@ -6,55 +6,105 @@ const router = Router();
 const prisma = new PrismaClient();
 const questionSelector = new QuestionSelector();
 
-// Rota para listar questões com filtros opcionais
-router.get('/', async (req, res) => {
-  console.log('[GET /api/questions] Iniciando processamento...');
-  try {
-    const { categoryId, difficulty, limit = 50 } = req.query;
-    console.log('[GET /api/questions] Parâmetros recebidos:', { categoryId, difficulty, limit });
+// Constante para o período de 90 dias em milissegundos
+const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
 
-    // Construir a query base
-    const where: Prisma.QuestionWhereInput = {};
-    
+// Função para verificar se uma questão foi usada nos últimos 90 dias
+async function wasQuestionRecentlyUsed(questionId: number): Promise<boolean> {
+  const ninetyDaysAgo = new Date(Date.now() - NINETY_DAYS);
+  
+  const recentHistory = await prisma.questionHistory.findFirst({
+    where: {
+      questionId,
+      usedAt: {
+        gte: ninetyDaysAgo
+      }
+    }
+  });
+
+  return !!recentHistory;
+}
+
+// Função para registrar o uso de questões
+async function registerQuestionsUsage(questionIds: number[]) {
+  const now = new Date();
+  
+  // Cria registros de histórico para cada questão
+  await prisma.questionHistory.createMany({
+    data: questionIds.map(questionId => ({
+      questionId,
+      usedAt: now,
+      createdAt: now
+    }))
+  });
+}
+
+// Rota para buscar questões com filtros
+router.get('/', async (req, res) => {
+  try {
+    const { categoryId, difficulty, page = '1', limit = '10' } = req.query;
+    console.log('[GET /api/questions] Parâmetros recebidos:', { categoryId, difficulty, page, limit });
+
+    const where: any = {};
     if (categoryId) {
       where.categoryId = parseInt(categoryId as string);
+      console.log('[GET /api/questions] Filtro de categoria:', where.categoryId);
     }
-    
     if (difficulty) {
-      where.difficulty = difficulty as string;
+      where.difficulty = difficulty;
+      console.log('[GET /api/questions] Filtro de dificuldade:', where.difficulty);
     }
 
-    // Buscar questões
-    const questions = await prisma.question.findMany({
-      where,
-      include: {
-        category: true
-      },
-      take: parseInt(limit as string),
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+    console.log('[GET /api/questions] Query completa:', where);
 
-    // Formatar questões para o frontend
+    const pageNumber = parseInt(page as string);
+    const limitNumber = parseInt(limit as string);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Primeiro, vamos verificar se existem questões com esses filtros
+    const count = await prisma.question.count({ where });
+    console.log('[GET /api/questions] Total de questões encontradas:', count);
+
+    if (count === 0) {
+      // Se não encontrou questões, vamos verificar os valores existentes
+      const categories = await prisma.category.findMany();
+      const difficulties = await prisma.question.findMany({
+        select: { difficulty: true },
+        distinct: ['difficulty']
+      });
+      console.log('[GET /api/questions] Categorias disponíveis:', categories.map(c => ({ id: c.id, name: c.name })));
+      console.log('[GET /api/questions] Dificuldades disponíveis:', difficulties.map(d => d.difficulty));
+    }
+
+    const [questions, total] = await Promise.all([
+      prisma.question.findMany({
+        where,
+        skip,
+        take: limitNumber,
+        include: {
+          category: true
+        }
+      }),
+      prisma.question.count({ where })
+    ]);
+
+    console.log('[GET /api/questions] Questões retornadas:', questions.length);
+
     const formattedQuestions = questions.map(q => ({
-      id: q.id,
-      text: q.text,
-      options: q.options,
-      correctAnswer: q.correctAnswer,
-      category: q.category.name,
-      categoryId: q.categoryId,
-      difficulty: q.difficulty,
-      explanation: q.explanation,
-      source: q.source,
-      scrImage: q.scrImage
+      ...q,
+      category: q.category.name
     }));
 
-    console.log('[GET /api/questions] Questões encontradas:', formattedQuestions.length);
-    res.json(formattedQuestions);
+    res.json({
+      questions: formattedQuestions,
+      total,
+      page: pageNumber,
+      limit: limitNumber,
+      totalPages: Math.ceil(total / limitNumber)
+    });
   } catch (error) {
-    console.error('[GET /api/questions] Erro detalhado:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('[GET /api/questions] Erro:', error);
+    res.status(500).json({ error: 'Erro ao buscar questões' });
   }
 });
 
@@ -70,7 +120,7 @@ router.get('/selected', async (req, res) => {
 
     if (!selectedQuestions) {
       console.log('[GET /api/questions/selected] Nenhuma seleção ativa encontrada');
-      return res.json([]);
+      return res.json({ questions: [] });
     }
 
     // Busca as questões completas
@@ -104,7 +154,7 @@ router.get('/selected', async (req, res) => {
     }));
 
     console.log('[GET /api/questions/selected] Questões formatadas:', formattedQuestions.length);
-    res.json(formattedQuestions);
+    res.json({ questions: formattedQuestions });
   } catch (error) {
     console.error('[GET /api/questions/selected] Erro detalhado:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -123,6 +173,23 @@ router.post('/selected', async (req, res) => {
       return res.status(400).json({ error: 'IDs das questões são obrigatórios' });
     }
 
+    // Verifica se alguma questão foi usada recentemente
+    const recentlyUsedQuestions = await Promise.all(
+      questionIds.map(async (id) => {
+        const wasUsed = await wasQuestionRecentlyUsed(id);
+        return wasUsed ? id : null;
+      })
+    );
+
+    const usedIds = recentlyUsedQuestions.filter((id): id is number => id !== null);
+    if (usedIds.length > 0) {
+      console.log('[POST /api/questions/selected] Erro: questões já usadas recentemente:', usedIds);
+      return res.status(400).json({ 
+        error: 'Algumas questões já foram usadas recentemente',
+        usedQuestionIds: usedIds
+      });
+    }
+
     // Desativa todas as seleções anteriores
     console.log('[POST /api/questions/selected] Desativando seleções anteriores...');
     await prisma.selectedQuestions.updateMany({
@@ -138,6 +205,10 @@ router.post('/selected', async (req, res) => {
         isActive: true
       }
     });
+
+    // Registra o uso das questões
+    console.log('[POST /api/questions/selected] Registrando uso das questões...');
+    await registerQuestionsUsage(questionIds);
 
     console.log('[POST /api/questions/selected] Seleção criada com sucesso:', selectedQuestions);
     res.json(selectedQuestions);
