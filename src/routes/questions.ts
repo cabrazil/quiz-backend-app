@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { QuestionSelector } from '../services/questionSelector.js';
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
+const execAsync = promisify(exec);
 const router = Router();
 const prisma = new PrismaClient();
 const questionSelector = new QuestionSelector();
@@ -608,6 +613,52 @@ router.post('/', async (req, res) => {
     res.status(201).json(question);
   } catch (error) {
     console.error('[POST /api/questions] Erro ao criar questão:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para criar pastas para questões selecionadas
+router.post('/create-folders', async (req, res) => {
+  console.log('[POST /api/questions/create-folders] Iniciando processamento...');
+  try {
+    const { questionIds } = req.body;
+    console.log('[POST /api/questions/create-folders] Recebendo questionIds:', questionIds);
+
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+      console.log('[POST /api/questions/create-folders] Erro: questionIds inválido');
+      return res.status(400).json({ error: 'IDs das questões são obrigatórios' });
+    }
+
+    // Executa o script para criar as pastas
+    try {
+      const scriptPath = path.join(process.cwd(), 'scripts', 'create-question-folders.js');
+      const questionIdsStr = questionIds.join(' ');
+      const command = `node ${scriptPath} ${questionIdsStr}`;
+      
+      console.log('[POST /api/questions/create-folders] Executando comando:', command);
+      
+      const { stdout, stderr } = await execAsync(command);
+      
+      console.log('[POST /api/questions/create-folders] Saída do script:', stdout);
+      
+      if (stderr) {
+        console.error('[POST /api/questions/create-folders] Erro do script:', stderr);
+      }
+      
+      res.json({ 
+        message: 'Script de criação de pastas executado com sucesso',
+        output: stdout,
+        error: stderr || undefined
+      });
+    } catch (scriptError) {
+      console.error('[POST /api/questions/create-folders] Erro ao executar script:', scriptError);
+      res.status(500).json({ 
+        error: 'Erro ao executar script de criação de pastas',
+        details: scriptError instanceof Error ? scriptError.message : String(scriptError)
+      });
+    }
+  } catch (error) {
+    console.error('[POST /api/questions/create-folders] Erro detalhado:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
