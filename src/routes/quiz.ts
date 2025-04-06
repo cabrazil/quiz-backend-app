@@ -73,7 +73,11 @@ router.post('/start', async (req, res) => {
       category: q.question.category.name,
       categoryId: q.question.categoryId,
       difficulty: q.question.difficulty,
-      scrImage: q.question.scrImage
+      scrImage: q.question.scrImage ? 
+        (q.question.scrImage.startsWith('/questions/') ? 
+          q.question.scrImage : 
+          `/questions/${q.question.id}/image_1.jpg`) : 
+        `/questions/${q.question.id}/image_1.jpg`
     }));
 
     res.json({

@@ -113,22 +113,18 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Rota para buscar questões selecionadas ativas
+// Rota para buscar questões selecionadas
 router.get('/selected', async (req, res) => {
-  console.log('[GET /api/questions/selected] Iniciando busca de questões selecionadas...');
   try {
     const selectedQuestions = await prisma.selectedQuestions.findFirst({
-      where: { isActive: true }
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' }
     });
-
-    console.log('[GET /api/questions/selected] Seleção encontrada:', selectedQuestions);
-
+    
     if (!selectedQuestions) {
-      console.log('[GET /api/questions/selected] Nenhuma seleção ativa encontrada');
       return res.json({ questions: [] });
     }
-
-    // Busca as questões completas
+    
     const questions = await prisma.question.findMany({
       where: {
         id: {
@@ -139,30 +135,11 @@ router.get('/selected', async (req, res) => {
         category: true
       }
     });
-
-    console.log('[GET /api/questions/selected] Questões encontradas:', questions.length);
-
-    // Formata as questões para o frontend
-    const formattedQuestions = questions.map(q => ({
-      id: q.id,
-      text: q.text,
-      options: q.options,
-      correctAnswer: q.correctAnswer,
-      category: q.category.name,
-      categoryId: q.categoryId,
-      difficulty: q.difficulty,
-      explanation: q.explanation,
-      source: q.source,
-      scrImage: q.scrImage,
-      createdAt: q.createdAt,
-      updatedAt: q.updatedAt
-    }));
-
-    console.log('[GET /api/questions/selected] Questões formatadas:', formattedQuestions.length);
-    res.json({ questions: formattedQuestions });
+    
+    res.json({ questions });
   } catch (error) {
-    console.error('[GET /api/questions/selected] Erro detalhado:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Error fetching selected questions:', error);
+    res.status(500).json({ error: 'Erro ao buscar questões selecionadas' });
   }
 });
 
@@ -660,6 +637,54 @@ router.post('/create-folders', async (req, res) => {
   } catch (error) {
     console.error('[POST /api/questions/create-folders] Erro detalhado:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para buscar opções de imagem para uma questão
+router.get('/:id/images', async (req, res) => {
+  try {
+    const questionId = parseInt(req.params.id);
+    
+    if (isNaN(questionId)) {
+      return res.status(400).json({ error: 'ID da questão inválido' });
+    }
+    
+    // Verifica se a questão existe
+    const question = await prisma.question.findUnique({
+      where: { id: questionId }
+    });
+    
+    if (!question) {
+      return res.status(404).json({ error: 'Questão não encontrada' });
+    }
+    
+    // Caminho para o arquivo de opções de imagem
+    const optionsPath = path.join(process.cwd(), '..', 'frontend', 'src', 'assets', 'questions', questionId.toString(), 'options', 'image-options.json');
+    
+    // Verifica se o arquivo de opções existe
+    if (!fs.existsSync(optionsPath)) {
+      // Se o arquivo não existe, executa o script para buscar imagens
+      try {
+        console.log('Arquivo de opções não encontrado. Executando script de busca de imagens...');
+        await execAsync('npm run find-images');
+        
+        // Verifica novamente se o arquivo foi criado
+        if (!fs.existsSync(optionsPath)) {
+          return res.status(404).json({ error: 'Não foi possível gerar opções de imagem para esta questão' });
+        }
+      } catch (scriptError) {
+        console.error('Erro ao executar script de busca de imagens:', scriptError);
+        return res.status(500).json({ error: 'Erro ao gerar opções de imagem' });
+      }
+    }
+    
+    // Lê o arquivo de opções
+    const imageOptions = JSON.parse(fs.readFileSync(optionsPath, 'utf8'));
+    
+    return res.json(imageOptions);
+  } catch (error) {
+    console.error('Erro ao buscar opções de imagem:', error);
+    return res.status(500).json({ error: 'Erro ao buscar opções de imagem' });
   }
 });
 
