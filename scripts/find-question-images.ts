@@ -73,16 +73,16 @@ async function translateToEnglish(text: string): Promise<string> {
 
 // Função para extrair o contexto principal da questão
 function extractMainContext(text: string): string {
-  // Remove caracteres especiais e números
+  // Preserva aspas e hífens que podem ser importantes para nomes próprios
   const cleanText = text.toLowerCase()
-    .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, '')
+    .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, ' ')
     .replace(/\\s{2,}/g, ' ')
     .replace(/[0-9]/g, '');
 
   // Divide o texto em palavras
   const words = cleanText.split(' ');
 
-  // Lista de palavras comuns em inglês para filtrar
+  // Lista reduzida de palavras comuns em inglês para filtrar
   const stopWords = new Set([
     'what', 'which', 'how', 'for', 'with', 'without', 'by', 'about', 'between', 'during',
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
@@ -102,14 +102,39 @@ function extractMainContext(text: string): string {
     'to', 'toward', 'under', 'underneath', 'up', 'upon', 'within', 'without'
   ]);
 
-  // Filtra palavras comuns e vazias
+  // Identifica entidades nomeadas (nomes próprios, títulos de filmes, etc.)
+  const namedEntities = new Set<string>();
+  
+  // Procura por padrões comuns de entidades nomeadas
+  const patterns = [
+    /"([^"]+)"/g,  // Texto entre aspas
+    /'([^']+)'/g,  // Texto entre aspas simples
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g  // Palavras com inicial maiúscula
+  ];
+  
+  for (const pattern of patterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        // Remove as aspas se presentes
+        const entity = match.replace(/["']/g, '').toLowerCase();
+        if (entity.length > 2) {
+          namedEntities.add(entity);
+        }
+      });
+    }
+  }
+  
+  // Filtra palavras comuns e vazias, mas preserva entidades nomeadas
   const filteredWords = words.filter(word => 
-    word.length > 2 && 
-    !stopWords.has(word)
+    (word.length > 2 && !stopWords.has(word)) || 
+    namedEntities.has(word)
   );
-
-  // Retorna as 3 palavras mais relevantes
-  return filteredWords.slice(0, 3).join(' ');
+  
+  // Adiciona as entidades nomeadas identificadas
+  const result = [...new Set([...filteredWords, ...Array.from(namedEntities)])];
+  
+  return result.join(' ');
 }
 
 // Função para obter palavras-chave específicas para cada categoria
@@ -246,16 +271,16 @@ function getCategoryKeywords(category: string): string[] {
 
 // Function to improve keyword extraction
 function improveSearchQuery(text: string, answer?: string, category?: string): string {
-  // Remove caracteres especiais e números
+  // Preserva aspas e hífens que podem ser importantes para nomes próprios
   const cleanText = text.toLowerCase()
-    .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, '')
+    .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, ' ')
     .replace(/\\s{2,}/g, ' ')
     .replace(/[0-9]/g, '');
 
   // Divide o texto em palavras
   const words = cleanText.split(' ');
 
-  // Lista expandida de palavras comuns em inglês para filtrar
+  // Lista reduzida de palavras comuns em inglês para filtrar
   const stopWords = new Set([
     'what', 'which', 'how', 'for', 'with', 'without', 'by', 'about', 'between', 'during',
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
@@ -275,11 +300,33 @@ function improveSearchQuery(text: string, answer?: string, category?: string): s
     'to', 'toward', 'under', 'underneath', 'up', 'upon', 'within', 'without'
   ]);
 
-  // Filtra palavras comuns e vazias
+  // Identifica entidades nomeadas (nomes próprios, títulos de filmes, etc.)
+  const namedEntities = new Set<string>();
+  
+  // Procura por padrões comuns de entidades nomeadas
+  const patterns = [
+    /"([^"]+)"/g,  // Texto entre aspas
+    /'([^']+)'/g,  // Texto entre aspas simples
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g  // Palavras com inicial maiúscula
+  ];
+  
+  for (const pattern of patterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        // Remove as aspas se presentes
+        const entity = match.replace(/["']/g, '').toLowerCase();
+        if (entity.length > 2) {
+          namedEntities.add(entity);
+        }
+      });
+    }
+  }
+  
+  // Filtra palavras comuns e vazias, mas preserva entidades nomeadas
   const filteredWords = words.filter(word => 
-    word.length > 2 && 
-    !stopWords.has(word) &&
-    !word.match(/^(what|which|how|for|with|without|by|about|between|during)$/i)
+    (word.length > 2 && !stopWords.has(word)) || 
+    namedEntities.has(word)
   );
 
   // Adiciona a categoria se disponível
@@ -292,7 +339,7 @@ function improveSearchQuery(text: string, answer?: string, category?: string): s
   // Adiciona palavras-chave da resposta se disponível
   if (answer) {
     const cleanAnswer = answer.toLowerCase()
-      .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, '')
+      .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, ' ')
       .replace(/\\s{2,}/g, ' ')
       .replace(/[0-9]/g, '');
     
@@ -302,18 +349,97 @@ function improveSearchQuery(text: string, answer?: string, category?: string): s
       !stopWords.has(word)
     );
     
-    searchTerms = [...searchTerms, ...filteredAnswerWords];
+    // Prioriza as palavras da resposta, pois são geralmente mais relevantes
+    searchTerms = [...filteredAnswerWords, ...searchTerms];
   }
   
   // Obtém palavras-chave relacionadas usando o mapeamento semântico
   const relatedKeywords = getRelatedKeywordsForTerms(searchTerms);
-  searchTerms = [...searchTerms, ...relatedKeywords];
+  
+  // Adiciona termos visuais específicos com base no contexto
+  const visualTerms = extractVisualTerms(text, answer);
+  searchTerms = [...searchTerms, ...relatedKeywords, ...visualTerms];
   
   // Remove duplicatas
   searchTerms = [...new Set(searchTerms)];
   
-  // Limita a 10 termos para não sobrecarregar a busca
-  return searchTerms.slice(0, 10).join(' ');
+  // Limita a 15 termos para não sobrecarregar a busca
+  return searchTerms.slice(0, 15).join(' ');
+}
+
+// Função para extrair termos visuais específicos com base no contexto
+function extractVisualTerms(text: string, answer?: string): string[] {
+  const visualTerms = new Set<string>();
+  
+  // Termos relacionados a filmes
+  if (text.includes('filme') || text.includes('movie') || text.includes('cinema')) {
+    visualTerms.add('movie scene');
+    visualTerms.add('film scene');
+    visualTerms.add('cinema');
+    visualTerms.add('movie poster');
+  }
+  
+  // Termos relacionados a personagens
+  if (text.includes('personagem') || text.includes('character') || text.includes('protagonista')) {
+    visualTerms.add('character');
+    visualTerms.add('protagonist');
+    visualTerms.add('actor');
+    visualTerms.add('actress');
+  }
+  
+  // Termos relacionados a robôs
+  if (text.includes('robô') || text.includes('robot') || text.includes('droid')) {
+    visualTerms.add('robot');
+    visualTerms.add('droid');
+    visualTerms.add('android');
+    visualTerms.add('mechanical');
+  }
+  
+  // Termos relacionados a máscaras
+  if (text.includes('mascarado') || text.includes('masked') || text.includes('máscara') || text.includes('mask')) {
+    visualTerms.add('masked');
+    visualTerms.add('mask');
+    visualTerms.add('face mask');
+    visualTerms.add('costume');
+  }
+  
+  // Termos específicos para Star Wars
+  if (text.includes('star wars') || text.includes('guerra nas estrelas')) {
+    visualTerms.add('star wars');
+    visualTerms.add('bb-8');
+    visualTerms.add('droid');
+    visualTerms.add('robot');
+    visualTerms.add('orange and white');
+  }
+  
+  // Termos específicos para V de Vingança
+  if (text.includes('v de vingança') || text.includes('v for vendetta')) {
+    visualTerms.add('v for vendetta');
+    visualTerms.add('masked');
+    visualTerms.add('guy fawkes mask');
+    visualTerms.add('revolution');
+  }
+  
+  // Adiciona termos específicos da resposta se disponível
+  if (answer) {
+    const answerLower = answer.toLowerCase();
+    
+    // Termos específicos para BB-8
+    if (answerLower.includes('bb-8') || answerLower.includes('bb8')) {
+      visualTerms.add('bb-8');
+      visualTerms.add('star wars droid');
+      visualTerms.add('orange and white robot');
+    }
+    
+    // Termos específicos para 5 de novembro
+    if (answerLower.includes('5 de novembro') || answerLower.includes('november 5')) {
+      visualTerms.add('guy fawkes');
+      visualTerms.add('v for vendetta');
+      visualTerms.add('masked revolution');
+    }
+  }
+  
+  return Array.from(visualTerms);
 }
 
 // Function to score image relevance
@@ -407,18 +533,27 @@ async function searchUnsplashImages(query: string, category?: string): Promise<I
   try {
     console.log(`Searching Unsplash for: "${query}"`);
     
+    // Limitar o tamanho da consulta para evitar erros
+    const limitedQuery = query.split(' ').slice(0, 10).join(' ');
+    console.log(`Limited query for Unsplash: "${limitedQuery}"`);
+    
     const response = await axios.get('https://api.unsplash.com/search/photos', {
       headers: {
         Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}`
       },
       params: {
-        query,
+        query: limitedQuery,
         per_page: 10,
         orientation: 'landscape',
         content_filter: 'high',
         order_by: 'relevant'
       }
     });
+
+    if (!response.data || !response.data.results || !Array.isArray(response.data.results)) {
+      console.error('Resposta inválida do Unsplash:', response.data);
+      return [];
+    }
 
     const results = response.data.results.map((photo: any) => ({
       id: photo.id,
@@ -435,6 +570,10 @@ async function searchUnsplashImages(query: string, category?: string): Promise<I
     return results;
   } catch (error) {
     console.error('Error searching Unsplash:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+    }
     return [];
   }
 }
@@ -444,20 +583,24 @@ async function searchPexelsImages(query: string, category?: string): Promise<Ima
   try {
     console.log(`Searching Pexels for: "${query}"`);
     
+    // Limitar o tamanho da consulta para evitar erros
+    const limitedQuery = query.split(' ').slice(0, 10).join(' ');
+    console.log(`Limited query for Pexels: "${limitedQuery}"`);
+    
     const response = await axios.get('https://api.pexels.com/v1/search', {
       headers: {
         Authorization: PEXELS_API_KEY
       },
       params: {
-        query,
+        query: limitedQuery,
         per_page: 10,
         orientation: 'landscape'
       }
     });
 
-    // Verifica se a resposta contém fotos
-    if (!response.data.photos || !Array.isArray(response.data.photos)) {
-      console.log('No photos found in Pexels response');
+    // Verificar se a resposta contém fotos
+    if (!response.data || !response.data.photos || !Array.isArray(response.data.photos)) {
+      console.error('Resposta inválida do Pexels:', response.data);
       return [];
     }
 
@@ -485,6 +628,10 @@ async function searchPexelsImages(query: string, category?: string): Promise<Ima
     return results;
   } catch (error) {
     console.error('Error searching Pexels:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+    }
     return [];
   }
 }
@@ -494,16 +641,25 @@ async function searchPixabayImages(query: string, category?: string): Promise<Im
   try {
     console.log(`Searching Pixabay for: "${query}"`);
     
+    // Limitar o tamanho da consulta para evitar erros 400
+    const limitedQuery = query.split(' ').slice(0, 10).join(' ');
+    console.log(`Limited query for Pixabay: "${limitedQuery}"`);
+    
     const response = await axios.get('https://pixabay.com/api/', {
       params: {
         key: PIXABAY_API_KEY,
-        q: query,
+        q: limitedQuery,
         per_page: 10,
         orientation: 'horizontal',
         safesearch: true,
         order: 'popular'
       }
     });
+
+    if (!response.data || !response.data.hits) {
+      console.error('Resposta inválida do Pixabay:', response.data);
+      return [];
+    }
 
     const results = response.data.hits.map((photo: any) => ({
       id: photo.id.toString(),
@@ -520,6 +676,10 @@ async function searchPixabayImages(query: string, category?: string): Promise<Im
     return results;
   } catch (error) {
     console.error('Error searching Pixabay:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+    }
     return [];
   }
 }
@@ -633,81 +793,146 @@ async function saveImageOptions(questionId: number, images: ImageResult[]) {
   if (!fs.existsSync(optionsDir)) {
     fs.mkdirSync(optionsDir, { recursive: true });
   }
-  
-  // Salva as opções de imagem em um arquivo JSON
-  const imageOptionsPath = path.join(optionsDir, 'image-options.json');
-  fs.writeFileSync(imageOptionsPath, JSON.stringify(images, null, 2));
-  
-  console.log(`Opções de imagem salvas em: ${imageOptionsPath}`);
+
+  // Processa e salva cada imagem
+  const processedImages = await Promise.all(
+    images.map(async (image, index) => {
+      const imagePath = await downloadAndResizeImage(image.url, questionId, index);
+      return {
+        ...image,
+        url: imagePath // Usa o caminho processado retornado por downloadAndResizeImage
+      };
+    })
+  );
+
+  // Salva as opções em um arquivo JSON
+  const optionsPath = path.join(optionsDir, 'options.json');
+  fs.writeFileSync(optionsPath, JSON.stringify({ images: processedImages }, null, 2));
+  console.log(`Opções de imagem salvas em: ${optionsPath}`);
 }
 
 // Função principal para encontrar imagens para as questões
-async function findImagesForQuestions() {
+async function findImagesForQuestions(questionIds?: number[]) {
   try {
-    // Busca questões selecionadas
-    const selectedQuestions = await prisma.selectedQuestions.findFirst({
-      where: { isActive: true },
-      orderBy: { createdAt: 'desc' }
-    });
+    console.log('Iniciando processamento de imagens para questões...');
     
-    const questions = await prisma.question.findMany({
-      where: {
-        id: {
-          in: selectedQuestions?.questionIds || []
+    // Se IDs específicos foram fornecidos, processa apenas essas questões
+    if (questionIds && questionIds.length > 0) {
+      console.log(`Processando ${questionIds.length} questões específicas: ${questionIds.join(', ')}`);
+      
+      // Busca as questões específicas
+      const questions = await prisma.question.findMany({
+        where: {
+          id: {
+            in: questionIds
+          }
         }
-      },
-      include: {
-        category: true
+      });
+      
+      if (questions.length === 0) {
+        console.error('Nenhuma questão encontrada com os IDs fornecidos');
+        return;
       }
-    });
-    
-    console.log(`Encontradas ${questions.length} questões selecionadas`);
-    
-    for (const question of questions) {
-      console.log(`\nProcessando questão ${question.id}: ${question.text}`);
       
-      // Traduz o texto da questão para inglês
-      const translatedText = await translateToEnglish(question.text);
-      console.log(`Texto traduzido: ${translatedText}`);
+      console.log(`Encontradas ${questions.length} questões para processamento`);
       
-      // Traduz a resposta correta para inglês
-      const translatedAnswer = await translateToEnglish(question.correctAnswer);
-      console.log(`Resposta traduzida: ${translatedAnswer}`);
+      // Processa cada questão
+      for (const question of questions) {
+        await processQuestion(question);
+      }
+    } else {
+      // Se nenhum ID foi fornecido, busca todas as questões selecionadas
+      console.log('Nenhum ID específico fornecido, buscando todas as questões selecionadas');
       
-      // Extrai o contexto principal e melhora a busca com a resposta
-      const mainContext = extractMainContext(translatedText);
-      const improvedQuery = improveSearchQuery(mainContext, translatedAnswer, question.category.name);
-      console.log(`Contexto principal: ${mainContext}`);
-      console.log(`Consulta melhorada: ${improvedQuery}`);
+      // Busca a seleção de questões mais recente
+      const selectedQuestions = await prisma.selectedQuestions.findFirst({
+        where: {
+          isActive: true
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
       
-      // Busca imagens em todas as fontes
-      const images = await searchAllImageSources(improvedQuery, question.category.name);
-      console.log(`Encontradas ${images.length} imagens`);
+      if (!selectedQuestions) {
+        console.error('Nenhuma seleção de questões ativa encontrada');
+        return;
+      }
       
-      // Salva as opções de imagem
-      await saveImageOptions(question.id, images);
+      console.log(`Encontrada seleção de questões com ID ${selectedQuestions.id}`);
       
-      // Salva a primeira imagem como imagem principal
-      if (images.length > 0) {
-        const imagePath = await downloadAndResizeImage(images[0].url, question.id, 0);
-        console.log(`Imagem principal salva em: ${imagePath}`);
-        
-        // Atualiza o caminho da imagem na questão
-        await prisma.question.update({
-          where: { id: question.id },
-          data: { scrImage: imagePath }
-        });
-        console.log('Caminho da imagem atualizado no banco de dados');
+      // Busca as questões da seleção
+      const questions = await prisma.question.findMany({
+        where: {
+          id: {
+            in: selectedQuestions.questionIds
+          }
+        }
+      });
+      
+      console.log(`Encontradas ${questions.length} questões para processamento`);
+      
+      // Processa cada questão
+      for (const question of questions) {
+        await processQuestion(question);
       }
     }
     
-    console.log('\nProcessamento concluído com sucesso!');
+    console.log('Processamento de imagens concluído com sucesso!');
   } catch (error) {
-    console.error('Erro ao processar questões:', error);
+    console.error('Erro ao processar imagens:', error);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-// Executa a função principal
-findImagesForQuestions(); 
+// Função auxiliar para processar uma única questão
+async function processQuestion(question: any) {
+  try {
+    console.log(`Processando questão ${question.id}: ${question.text}`);
+    
+    // Traduz o texto da questão e a resposta correta para inglês
+    const translatedText = await translateToEnglish(question.text);
+    const translatedAnswer = await translateToEnglish(question.correctAnswer);
+    
+    console.log(`Texto traduzido: ${translatedText}`);
+    console.log(`Resposta traduzida: ${translatedAnswer}`);
+    
+    // Extrai o contexto principal da questão
+    const context = extractMainContext(translatedText);
+    console.log(`Contexto extraído: ${context}`);
+    
+    // Melhora a query de busca
+    const searchQuery = improveSearchQuery(context, translatedAnswer);
+    console.log(`Query de busca melhorada: ${searchQuery}`);
+    
+    // Busca imagens
+    const images = await searchAllImageSources(searchQuery);
+    console.log(`Encontradas ${images.length} imagens`);
+    
+    // Salva as opções de imagem
+    if (images.length > 0) {
+      await saveImageOptions(question.id, images);
+      
+      // Baixa e redimensiona a primeira imagem como imagem principal
+      const mainImage = images[0];
+      const imagePath = await downloadAndResizeImage(mainImage.url, question.id, 1);
+      
+      // Atualiza o banco de dados com o caminho da imagem
+      await prisma.question.update({
+        where: { id: question.id },
+        data: { scrImage: imagePath }
+      });
+      
+      console.log(`Imagem principal atualizada para a questão ${question.id}: ${imagePath}`);
+    } else {
+      console.log(`Nenhuma imagem encontrada para a questão ${question.id}`);
+    }
+  } catch (error) {
+    console.error(`Erro ao processar questão ${question.id}:`, error);
+  }
+}
+
+// Executa o script
+const questionIds = process.argv.slice(2).map(id => parseInt(id));
+findImagesForQuestions(questionIds.length > 0 ? questionIds : undefined); 

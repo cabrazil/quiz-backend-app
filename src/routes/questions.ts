@@ -522,6 +522,25 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Questão não encontrada' });
     }
 
+    // Garante que o caminho da imagem está no formato correto
+    let scrImage = questionData.scrImage;
+    if (scrImage) {
+      // Se o caminho começa com /src/assets/questions/, atualiza para /questions/
+      if (scrImage.startsWith('/src/assets/questions/')) {
+        scrImage = scrImage.replace('/src/assets/questions/', '/questions/');
+      }
+      // Se o caminho não está no formato esperado, tenta extrair o ID da questão
+      else if (!scrImage.startsWith('/questions/')) {
+        const match = scrImage.match(/\/(\d+)\//);
+        if (match) {
+          const questionId = match[1];
+          scrImage = `/questions/${questionId}/image_1.jpg`;
+        } else {
+          scrImage = `/questions/${id}/image_1.jpg`;
+        }
+      }
+    }
+
     // Atualiza a questão
     const updatedQuestion = await prisma.question.update({
       where: { id: parseInt(id) },
@@ -533,14 +552,26 @@ router.put('/:id', async (req, res) => {
         difficulty: questionData.difficulty,
         explanation: questionData.explanation,
         source: questionData.source,
-        scrImage: questionData.scrImage
+        scrImage: scrImage
       },
       include: {
         category: true
       }
     });
 
-    res.json(updatedQuestion);
+    // Formata a resposta para o frontend
+    const formattedQuestion = {
+      id: updatedQuestion.id,
+      text: updatedQuestion.text,
+      options: updatedQuestion.options as string[],
+      correctAnswer: updatedQuestion.correctAnswer,
+      category: updatedQuestion.category.name,
+      categoryId: updatedQuestion.categoryId,
+      difficulty: updatedQuestion.difficulty,
+      scrImage: updatedQuestion.scrImage,
+    };
+
+    res.json(formattedQuestion);
   } catch (error) {
     console.error('Erro ao atualizar questão:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -644,10 +675,7 @@ router.post('/create-folders', async (req, res) => {
 router.get('/:id/images', async (req, res) => {
   try {
     const questionId = parseInt(req.params.id);
-    
-    if (isNaN(questionId)) {
-      return res.status(400).json({ error: 'ID da questão inválido' });
-    }
+    console.log(`[GET /api/questions/${questionId}/images] Iniciando busca de opções de imagem`);
     
     // Verifica se a questão existe
     const question = await prisma.question.findUnique({
@@ -655,36 +683,126 @@ router.get('/:id/images', async (req, res) => {
     });
     
     if (!question) {
+      console.log(`[GET /api/questions/${questionId}/images] Questão não encontrada`);
       return res.status(404).json({ error: 'Questão não encontrada' });
     }
     
-    // Caminho para o arquivo de opções de imagem
-    const optionsPath = path.join(process.cwd(), '..', 'frontend', 'public', 'questions', questionId.toString(), 'options', 'image-options.json');
+    // Caminho para o arquivo de opções
+    const optionsPath = path.join(process.cwd(), '..', 'frontend', 'public', 'questions', questionId.toString(), 'options', 'options.json');
+    console.log(`[GET /api/questions/${questionId}/images] Caminho do arquivo de opções: ${optionsPath}`);
     
-    // Verifica se o arquivo de opções existe
+    // Se o arquivo de opções não existir, executa o script para encontrá-las
     if (!fs.existsSync(optionsPath)) {
-      // Se o arquivo não existe, executa o script para buscar imagens
+      console.log(`[GET /api/questions/${questionId}/images] Arquivo de opções não encontrado, executando script...`);
+      const scriptPath = path.join(process.cwd(), 'scripts', 'find-question-images.ts');
+      
       try {
-        console.log('Arquivo de opções não encontrado. Executando script de busca de imagens...');
-        await execAsync('npm run find-images');
-        
-        // Verifica novamente se o arquivo foi criado
-        if (!fs.existsSync(optionsPath)) {
-          return res.status(404).json({ error: 'Não foi possível gerar opções de imagem para esta questão' });
+        // Verifica se o script existe
+        if (!fs.existsSync(scriptPath)) {
+          console.error(`[GET /api/questions/${questionId}/images] Script não encontrado em: ${scriptPath}`);
+          return res.status(500).json({ error: 'Script de processamento de imagens não encontrado' });
         }
-      } catch (scriptError) {
-        console.error('Erro ao executar script de busca de imagens:', scriptError);
-        return res.status(500).json({ error: 'Erro ao gerar opções de imagem' });
+
+        // Passa o ID da questão como parâmetro para o script
+        const command = `npx tsx ${scriptPath} ${questionId}`;
+        console.log(`[GET /api/questions/${questionId}/images] Executando comando: ${command}`);
+        
+        const { stdout, stderr } = await execAsync(command);
+        
+        if (stderr) {
+          console.error(`[GET /api/questions/${questionId}/images] Erro do script:`, stderr);
+          // Não retornamos erro aqui, pois o script pode ter gerado stderr mas ainda ter executado com sucesso
+        }
+        
+        console.log(`[GET /api/questions/${questionId}/images] Saída do script:`, stdout);
+
+        // Verifica se o arquivo de opções foi criado após a execução do script
+        if (!fs.existsSync(optionsPath)) {
+          console.error(`[GET /api/questions/${questionId}/images] Arquivo de opções não foi criado após execução do script`);
+          return res.status(500).json({ error: 'Não foi possível gerar as opções de imagem' });
+        }
+      } catch (error) {
+        console.error(`[GET /api/questions/${questionId}/images] Erro ao executar script:`, error);
+        return res.status(500).json({ 
+          error: 'Erro ao processar imagens',
+          details: error instanceof Error ? error.message : String(error)
+        });
       }
     }
     
     // Lê o arquivo de opções
-    const imageOptions = JSON.parse(fs.readFileSync(optionsPath, 'utf8'));
-    
-    return res.json({ images: imageOptions });
+    try {
+      console.log(`[GET /api/questions/${questionId}/images] Lendo arquivo de opções`);
+      const optionsData = JSON.parse(fs.readFileSync(optionsPath, 'utf-8'));
+      console.log(`[GET /api/questions/${questionId}/images] Opções encontradas: ${optionsData.images?.length || 0}`);
+      return res.json(optionsData);
+    } catch (error) {
+      console.error(`[GET /api/questions/${questionId}/images] Erro ao ler arquivo de opções:`, error);
+      return res.status(500).json({ 
+        error: 'Erro ao ler opções de imagem',
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
   } catch (error) {
-    console.error('Erro ao buscar opções de imagem:', error);
-    return res.status(500).json({ error: 'Erro ao buscar opções de imagem' });
+    console.error(`[GET /api/questions/${req.params.id}/images] Erro ao buscar opções de imagem:`, error);
+    res.status(500).json({ 
+      error: 'Erro ao buscar opções de imagem',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Rota para processar imagens para todas as questões selecionadas
+router.post('/process-images', async (req, res) => {
+  try {
+    console.log('[POST /api/questions/process-images] Iniciando processamento de imagens para questões selecionadas');
+    
+    // Verifica se há IDs de questões específicos no corpo da requisição
+    const questionIds = req.body.questionIds;
+    
+    if (questionIds && Array.isArray(questionIds) && questionIds.length > 0) {
+      console.log(`[POST /api/questions/process-images] Processando ${questionIds.length} questões específicas`);
+    } else {
+      console.log('[POST /api/questions/process-images] Processando todas as questões selecionadas');
+    }
+    
+    // Caminho para o script
+    const scriptPath = path.join(process.cwd(), 'scripts', 'find-question-images.ts');
+    
+    // Verifica se o script existe
+    if (!fs.existsSync(scriptPath)) {
+      console.error(`[POST /api/questions/process-images] Script não encontrado em: ${scriptPath}`);
+      return res.status(500).json({ error: 'Script de processamento de imagens não encontrado' });
+    }
+    
+    // Constrói o comando
+    let command = `npx tsx ${scriptPath}`;
+    if (questionIds && Array.isArray(questionIds) && questionIds.length > 0) {
+      command += ` ${questionIds.join(' ')}`;
+    }
+    
+    console.log(`[POST /api/questions/process-images] Executando comando: ${command}`);
+    
+    // Executa o script
+    const { stdout, stderr } = await execAsync(command);
+    
+    if (stderr) {
+      console.error(`[POST /api/questions/process-images] Erro do script:`, stderr);
+    }
+    
+    console.log(`[POST /api/questions/process-images] Saída do script:`, stdout);
+    
+    res.json({ 
+      message: 'Processamento de imagens iniciado com sucesso',
+      output: stdout,
+      error: stderr || undefined
+    });
+  } catch (error) {
+    console.error(`[POST /api/questions/process-images] Erro ao processar imagens:`, error);
+    res.status(500).json({ 
+      error: 'Erro ao processar imagens',
+      details: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 
