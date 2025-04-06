@@ -659,7 +659,7 @@ router.get('/:id/images', async (req, res) => {
     }
     
     // Caminho para o arquivo de opções de imagem
-    const optionsPath = path.join(process.cwd(), '..', 'frontend', 'src', 'assets', 'questions', questionId.toString(), 'options', 'image-options.json');
+    const optionsPath = path.join(process.cwd(), '..', 'frontend', 'public', 'questions', questionId.toString(), 'options', 'image-options.json');
     
     // Verifica se o arquivo de opções existe
     if (!fs.existsSync(optionsPath)) {
@@ -681,7 +681,7 @@ router.get('/:id/images', async (req, res) => {
     // Lê o arquivo de opções
     const imageOptions = JSON.parse(fs.readFileSync(optionsPath, 'utf8'));
     
-    return res.json(imageOptions);
+    return res.json({ images: imageOptions });
   } catch (error) {
     console.error('Erro ao buscar opções de imagem:', error);
     return res.status(500).json({ error: 'Erro ao buscar opções de imagem' });

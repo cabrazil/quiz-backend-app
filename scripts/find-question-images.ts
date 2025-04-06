@@ -5,6 +5,7 @@ import { extractKeywords } from '../src/utils/textUtils.js';
 import fs from 'fs';
 import path from 'path';
 import { createCanvas, loadImage } from 'canvas';
+import { getRelatedKeywords, getRelatedKeywordsForTerms } from './semantic-mapping.js';
 
 dotenv.config();
 
@@ -244,7 +245,7 @@ function getCategoryKeywords(category: string): string[] {
 }
 
 // Function to improve keyword extraction
-function improveSearchQuery(text: string, category?: string): string {
+function improveSearchQuery(text: string, answer?: string, category?: string): string {
   // Remove caracteres especiais e números
   const cleanText = text.toLowerCase()
     .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, '')
@@ -286,14 +287,33 @@ function improveSearchQuery(text: string, category?: string): string {
   if (category) {
     const categoryWords = category.toLowerCase().split(' ');
     searchTerms = [...searchTerms, ...categoryWords.filter(word => !stopWords.has(word))];
-    
-    // Adiciona palavras-chave específicas da categoria
-    const categoryKeywords = getCategoryKeywords(category);
-    searchTerms = [...searchTerms, ...categoryKeywords.slice(0, 3)];
   }
-
-  // Remove duplicatas e limita a 5 termos mais relevantes
-  return [...new Set(searchTerms)].slice(0, 5).join(' ');
+  
+  // Adiciona palavras-chave da resposta se disponível
+  if (answer) {
+    const cleanAnswer = answer.toLowerCase()
+      .replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, '')
+      .replace(/\\s{2,}/g, ' ')
+      .replace(/[0-9]/g, '');
+    
+    const answerWords = cleanAnswer.split(' ');
+    const filteredAnswerWords = answerWords.filter(word => 
+      word.length > 2 && 
+      !stopWords.has(word)
+    );
+    
+    searchTerms = [...searchTerms, ...filteredAnswerWords];
+  }
+  
+  // Obtém palavras-chave relacionadas usando o mapeamento semântico
+  const relatedKeywords = getRelatedKeywordsForTerms(searchTerms);
+  searchTerms = [...searchTerms, ...relatedKeywords];
+  
+  // Remove duplicatas
+  searchTerms = [...new Set(searchTerms)];
+  
+  // Limita a 10 termos para não sobrecarregar a busca
+  return searchTerms.slice(0, 10).join(' ');
 }
 
 // Function to score image relevance
@@ -549,9 +569,11 @@ async function downloadAndResizeImage(imageUrl: string, questionId: number, opti
     const canvas = createCanvas(targetWidth, targetHeight);
     const ctx = canvas.getContext('2d');
     
-    // Fill background with white
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    // Fill background with white only if the image is not PNG
+    if (!imageUrl.toLowerCase().endsWith('.png')) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+    }
     
     // Calculate dimensions to maintain aspect ratio
     let drawWidth = targetWidth;
@@ -577,11 +599,17 @@ async function downloadAndResizeImage(imageUrl: string, questionId: number, opti
     // Draw image
     ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
     
-    // Save image
-    const fileName = `image_${optionIndex + 1}.jpg`;
+    // Determine file extension based on source image
+    const isPNG = imageUrl.toLowerCase().endsWith('.png');
+    const fileExtension = isPNG ? 'png' : 'jpg';
+    const fileName = `image_${optionIndex + 1}.${fileExtension}`;
     const filePath = path.join(dirPath, fileName);
     const out = fs.createWriteStream(filePath);
-    const stream = canvas.createJPEGStream({ quality: 0.9 });
+    
+    // Create appropriate stream based on file type
+    const stream = isPNG 
+      ? canvas.createPNGStream()
+      : canvas.createJPEGStream({ quality: 0.9 });
     
     return new Promise((resolve, reject) => {
       stream.pipe(out);
@@ -599,7 +627,7 @@ async function downloadAndResizeImage(imageUrl: string, questionId: number, opti
 
 // Função para salvar as opções de imagem em um arquivo JSON
 async function saveImageOptions(questionId: number, images: ImageResult[]) {
-  const optionsDir = path.join(process.cwd(), '..', 'frontend', 'src', 'assets', 'questions', questionId.toString(), 'options');
+  const optionsDir = path.join(process.cwd(), '..', 'frontend', 'public', 'questions', questionId.toString(), 'options');
   
   // Cria o diretório de opções se não existir
   if (!fs.existsSync(optionsDir)) {
@@ -642,12 +670,18 @@ async function findImagesForQuestions() {
       const translatedText = await translateToEnglish(question.text);
       console.log(`Texto traduzido: ${translatedText}`);
       
-      // Extrai o contexto principal
+      // Traduz a resposta correta para inglês
+      const translatedAnswer = await translateToEnglish(question.correctAnswer);
+      console.log(`Resposta traduzida: ${translatedAnswer}`);
+      
+      // Extrai o contexto principal e melhora a busca com a resposta
       const mainContext = extractMainContext(translatedText);
+      const improvedQuery = improveSearchQuery(mainContext, translatedAnswer, question.category.name);
       console.log(`Contexto principal: ${mainContext}`);
+      console.log(`Consulta melhorada: ${improvedQuery}`);
       
       // Busca imagens em todas as fontes
-      const images = await searchAllImageSources(mainContext, question.category.name);
+      const images = await searchAllImageSources(improvedQuery, question.category.name);
       console.log(`Encontradas ${images.length} imagens`);
       
       // Salva as opções de imagem

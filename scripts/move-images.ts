@@ -67,6 +67,7 @@ async function moveImages() {
         const files = fs.readdirSync(sourceDir);
         
         for (const file of files) {
+          // Verifica se o arquivo é uma imagem (jpg, jpeg ou png)
           if (file.match(/\.(jpg|jpeg|png)$/i)) {
             const sourceFile = path.join(sourceDir, file);
             const destFile = path.join(destDir, file);

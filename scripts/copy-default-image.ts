@@ -31,18 +31,36 @@ async function createDefaultImage() {
     ctx.textBaseline = 'middle';
     ctx.fillText('Cuca Legal', 400, 225);
     
-    // Salva a imagem
-    const filePath = path.join(defaultDir, 'image_1.jpg');
-    const out = fs.createWriteStream(filePath);
-    const stream = canvas.createJPEGStream({ quality: 0.9 });
-    stream.pipe(out);
+    // Salva a imagem em JPG
+    const jpgPath = path.join(defaultDir, 'image_1.jpg');
+    const jpgOut = fs.createWriteStream(jpgPath);
+    const jpgStream = canvas.createJPEGStream({ quality: 0.9 });
+    
+    // Salva a imagem em PNG
+    const pngPath = path.join(defaultDir, 'image_1.png');
+    const pngOut = fs.createWriteStream(pngPath);
+    const pngStream = canvas.createPNGStream();
     
     return new Promise((resolve, reject) => {
-      out.on('finish', () => {
-        console.log(`Imagem padrão criada em: ${filePath}`);
-        resolve(filePath);
-      });
-      out.on('error', reject);
+      let completed = 0;
+      const total = 2;
+      
+      const checkComplete = () => {
+        completed++;
+        if (completed === total) {
+          console.log(`Imagens padrão criadas em: ${jpgPath} e ${pngPath}`);
+          resolve([jpgPath, pngPath]);
+        }
+      };
+      
+      jpgStream.pipe(jpgOut);
+      pngStream.pipe(pngOut);
+      
+      jpgOut.on('finish', checkComplete);
+      pngOut.on('finish', checkComplete);
+      
+      jpgOut.on('error', reject);
+      pngOut.on('error', reject);
     });
   } catch (error) {
     console.error('Erro ao criar imagem padrão:', error);
