@@ -1,0 +1,5 @@
+# Este é um arquivo gerado automaticamente pelo Prisma.
+# Ele contém os metadados da migração.
+
+migration_name = "add_image_config"
+checksum = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" 

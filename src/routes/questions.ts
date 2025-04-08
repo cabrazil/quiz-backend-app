@@ -806,4 +806,43 @@ router.post('/process-images', async (req, res) => {
   }
 });
 
+// Rota para atualizar as configurações de imagem de uma questão
+router.put('/:id/image-config', async (req, res) => {
+  try {
+    const questionId = parseInt(req.params.id);
+    const { imagePosition, imageScale } = req.body;
+    
+    console.log(`[PUT /api/questions/${questionId}/image-config] Atualizando configurações de imagem:`, { imagePosition, imageScale });
+    
+    // Verifica se a questão existe
+    const question = await prisma.question.findUnique({
+      where: { id: questionId }
+    });
+    
+    if (!question) {
+      console.log(`[PUT /api/questions/${questionId}/image-config] Questão não encontrada`);
+      return res.status(404).json({ error: 'Questão não encontrada' });
+    }
+    
+    // Atualiza as configurações de imagem
+    const updatedQuestion = await prisma.question.update({
+      where: { id: questionId },
+      data: {
+        imagePosition,
+        imageScale
+      }
+    });
+    
+    console.log(`[PUT /api/questions/${questionId}/image-config] Configurações atualizadas com sucesso`);
+    
+    res.json(updatedQuestion);
+  } catch (error) {
+    console.error(`[PUT /api/questions/${req.params.id}/image-config] Erro ao atualizar configurações de imagem:`, error);
+    res.status(500).json({ 
+      error: 'Erro ao atualizar configurações de imagem',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 export default router; 
